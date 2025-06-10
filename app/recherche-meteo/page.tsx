@@ -25,6 +25,10 @@ import {
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { WeatherSkeleton } from "@/components/WeatherSkeleton"
+import { WeatherChart } from "@/components/WeatherChart"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // Base de données simplifiée des villes françaises pour l'autocomplétion
 const villesFrancaises = [
@@ -140,6 +144,7 @@ export default function RechercheMeteo() {
   const [result, setResult] = useState<MeteoResult | null>(null)
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("recherche")
+  const [showChart, setShowChart] = useState(false)
 
   // Filtrer les villes en fonction de la recherche
   useEffect(() => {
@@ -286,6 +291,34 @@ export default function RechercheMeteo() {
 
         setResult(meteoResult)
         setActiveTab("resultats")
+
+        // Sauvegarder la recherche dans l'historique si possible
+        try {
+          const searchHistory = localStorage.getItem("weather-search-history")
+          const history = searchHistory ? JSON.parse(searchHistory) : []
+          const newSearch = {
+            id: Date.now().toString(),
+            ville,
+            date,
+            time,
+            timestamp: Date.now(),
+            result: {
+              pleuvait: meteoResult.pleuvait,
+              temperature: meteoResult.temperature,
+              precipitation: meteoResult.precipitation,
+            },
+          }
+
+          const updatedHistory = [
+            newSearch,
+            ...history.filter((s: any) => !(s.ville === ville && s.date === date && s.time === time)),
+          ].slice(0, 5)
+
+          localStorage.setItem("weather-search-history", JSON.stringify(updatedHistory))
+        } catch (e) {
+          // Ignorer les erreurs de localStorage
+          console.warn("Impossible de sauvegarder l'historique:", e)
+        }
       } else {
         // Données non disponibles
         const meteoResult: MeteoResult = {
@@ -517,11 +550,16 @@ export default function RechercheMeteo() {
                   className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   {loadingStations ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Recherche en cours...
+                    </>
                   ) : (
-                    <MapPin className="mr-2 h-4 w-4" />
+                    <>
+                      <MapPin className="mr-2 h-4 w-4" />
+                      Rechercher les stations météo proches
+                    </>
                   )}
-                  Rechercher les stations météo proches
                 </Button>
               </CardFooter>
             </Card>
@@ -538,7 +576,16 @@ export default function RechercheMeteo() {
                 <CardDescription>Sélectionnez une station pour consulter les données météorologiques</CardDescription>
               </CardHeader>
               <CardContent className="p-6">
-                {stations.length > 0 ? (
+                {loadingStations ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-40 w-full rounded-lg" />
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                      ))}
+                    </div>
+                  </div>
+                ) : stations.length > 0 ? (
                   <div className="space-y-6">
                     {/* Carte des stations (simulée) */}
                     <div className="bg-gradient-to-br from-blue-50 to-green-50 p-6 rounded-xl border-2 border-blue-200 text-center">
@@ -639,8 +686,17 @@ export default function RechercheMeteo() {
                   disabled={loading || !selectedStation}
                   className="ml-auto bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CloudRain className="mr-2 h-4 w-4" />}
-                  Consulter la météo
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Chargement...
+                    </>
+                  ) : (
+                    <>
+                      <CloudRain className="mr-2 h-4 w-4" />
+                      Consulter la météo
+                    </>
+                  )}
                 </Button>
               </CardFooter>
             </Card>
@@ -648,101 +704,166 @@ export default function RechercheMeteo() {
 
           {/* Onglet des résultats */}
           <TabsContent value="resultats">
-            {result && (
-              <Card className="mb-6 shadow-xl border-0 bg-white/90 backdrop-blur-sm">
-                <CardHeader className="bg-gradient-to-r from-green-100 to-blue-100 rounded-t-lg">
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    {result.pleuvait ? (
-                      <Droplets className="h-6 w-6 text-blue-500" />
-                    ) : (
-                      <CheckCircle className="h-6 w-6 text-green-500" />
-                    )}
-                    Résultat pour {result.ville}
-                  </CardTitle>
-                  <CardDescription>
-                    {result.date} à {result.time} - Station {result.stationNom} ({result.station})
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-6">
-                  {/* Réponse principale */}
-                  <div className="text-center p-8 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl mb-6 border-2 border-green-200">
-                    <div className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                      {result.pleuvait ? "🌧️ OUI, il pleuvait" : "☀️ NON, il ne pleuvait pas"}
-                    </div>
-                    <div className="text-xl mb-4 text-gray-700">{result.conditions}</div>
-                    {result.dataSource === "api" && (
-                      <Badge className="bg-green-100 text-green-800 px-4 py-2 text-sm font-medium">
-                        Données officielles Météo-France
-                      </Badge>
-                    )}
-                    {result.dataSource === "unavailable" && (
-                      <Badge variant="outline" className="px-4 py-2 text-sm">
-                        Données non disponibles pour cette période
-                      </Badge>
-                    )}
-                  </div>
+            {loading ? (
+              <WeatherSkeleton />
+            ) : (
+              result && (
+                <>
+                  <Card className="mb-6 shadow-xl border-0 bg-white/90 backdrop-blur-sm">
+                    <CardHeader className="bg-gradient-to-r from-green-100 to-blue-100 rounded-t-lg">
+                      <CardTitle className="flex items-center gap-2 text-xl">
+                        {result.pleuvait ? (
+                          <Droplets className="h-6 w-6 text-blue-500" />
+                        ) : (
+                          <CheckCircle className="h-6 w-6 text-green-500" />
+                        )}
+                        Résultat pour {result.ville}
+                      </CardTitle>
+                      <CardDescription>
+                        {result.date} à {result.time} - Station {result.stationNom} ({result.station})
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      {/* Réponse principale */}
+                      <div className="text-center p-8 bg-gradient-to-br from-green-50 to-blue-50 rounded-xl mb-6 border-2 border-green-200">
+                        <div className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                          {result.pleuvait ? "🌧️ OUI, il pleuvait" : "☀️ NON, il ne pleuvait pas"}
+                        </div>
+                        <div className="text-xl mb-4 text-gray-700">{result.conditions}</div>
+                        {result.dataSource === "api" && (
+                          <Badge className="bg-green-100 text-green-800 px-4 py-2 text-sm font-medium">
+                            Données officielles Météo-France
+                          </Badge>
+                        )}
+                        {result.dataSource === "unavailable" && (
+                          <Badge variant="outline" className="px-4 py-2 text-sm">
+                            Données non disponibles pour cette période
+                          </Badge>
+                        )}
+                      </div>
 
-                  {/* Détails météorologiques */}
-                  {result.dataSource === "api" && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      {result.precipitation !== undefined && (
-                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
-                          <Droplets className="h-8 w-8 mx-auto mb-3 text-blue-500" />
-                          <div className="text-3xl font-bold text-blue-600 mb-1">
-                            {result.precipitation.toFixed(1)} mm
-                          </div>
-                          <div className="text-sm text-blue-600 font-medium">Précipitations</div>
+                      {/* Détails météorologiques */}
+                      {result.dataSource === "api" && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                          {result.precipitation !== undefined && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
+                                    <Droplets className="h-8 w-8 mx-auto mb-3 text-blue-500" />
+                                    <div className="text-3xl font-bold text-blue-600 mb-1">
+                                      {result.precipitation.toFixed(1)} mm
+                                    </div>
+                                    <div className="text-sm text-blue-600 font-medium">Précipitations</div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Quantité de pluie mesurée sur une heure</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+
+                          {result.temperature !== undefined && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
+                                    <Thermometer className="h-8 w-8 mx-auto mb-3 text-orange-500" />
+                                    <div className="text-3xl font-bold text-orange-600 mb-1">
+                                      {result.temperature.toFixed(1)}°C
+                                    </div>
+                                    <div className="text-sm text-orange-600 font-medium">Température</div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Température de l'air mesurée à l'ombre</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+
+                          {result.windSpeed !== undefined && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
+                                    <Wind className="h-8 w-8 mx-auto mb-3 text-green-500" />
+                                    <div className="text-3xl font-bold text-green-600 mb-1">
+                                      {result.windSpeed} km/h
+                                    </div>
+                                    <div className="text-sm text-green-600 font-medium">Vent</div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Vitesse moyenne du vent sur 10 minutes</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+
+                          {result.pressure !== undefined && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
+                                    <Gauge className="h-8 w-8 mx-auto mb-3 text-purple-500" />
+                                    <div className="text-3xl font-bold text-purple-600 mb-1">
+                                      {result.pressure.toFixed(0)} hPa
+                                    </div>
+                                    <div className="text-sm text-purple-600 font-medium">Pression</div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Pression atmosphérique ramenée au niveau de la mer</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       )}
+                    </CardContent>
+                    <CardFooter className="flex justify-between">
+                      <Button
+                        variant="outline"
+                        onClick={() => setActiveTab("stations")}
+                        className="shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Retour aux stations
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowChart(!showChart)}
+                        className="shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        {showChart ? "Masquer le graphique" : "Afficher le graphique"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setActiveTab("recherche")}
+                        className="shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        Nouvelle recherche
+                      </Button>
+                    </CardFooter>
+                  </Card>
 
-                      {result.temperature !== undefined && (
-                        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
-                          <Thermometer className="h-8 w-8 mx-auto mb-3 text-orange-500" />
-                          <div className="text-3xl font-bold text-orange-600 mb-1">
-                            {result.temperature.toFixed(1)}°C
-                          </div>
-                          <div className="text-sm text-orange-600 font-medium">Température</div>
-                        </div>
-                      )}
-
-                      {result.windSpeed !== undefined && (
-                        <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
-                          <Wind className="h-8 w-8 mx-auto mb-3 text-green-500" />
-                          <div className="text-3xl font-bold text-green-600 mb-1">{result.windSpeed} km/h</div>
-                          <div className="text-sm text-green-600 font-medium">Vent</div>
-                        </div>
-                      )}
-
-                      {result.pressure !== undefined && (
-                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl text-center shadow-sm hover:shadow-md transition-shadow">
-                          <Gauge className="h-8 w-8 mx-auto mb-3 text-purple-500" />
-                          <div className="text-3xl font-bold text-purple-600 mb-1">
-                            {result.pressure.toFixed(0)} hPa
-                          </div>
-                          <div className="text-sm text-purple-600 font-medium">Pression</div>
-                        </div>
-                      )}
-                    </div>
+                  {/* Graphique météo */}
+                  {showChart && result.dataSource === "api" && (
+                    <WeatherChart
+                      data={{
+                        temperature: result.temperature,
+                        precipitation: result.precipitation,
+                        humidity: result.humidity,
+                        windSpeed: result.windSpeed,
+                        pressure: result.pressure,
+                      }}
+                      title="Analyse graphique des données météo"
+                    />
                   )}
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={() => setActiveTab("stations")}
-                    className="shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Retour aux stations
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setActiveTab("recherche")}
-                    className="shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    Nouvelle recherche
-                  </Button>
-                </CardFooter>
-              </Card>
+                </>
+              )
             )}
           </TabsContent>
         </Tabs>
